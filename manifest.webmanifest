@@ -1,0 +1,8 @@
+{
+  "name": "OPD Tap Logger",
+  "short_name": "OPD",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#099966"
+}
