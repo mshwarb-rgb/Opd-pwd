@@ -1,13 +1,11 @@
-// OPD v6 - compact UI + Excel export + Age x Gender table
-const APP_VERSION = "6.0.0";
+// OPD v6c – compact + export age labels
+const APP_VERSION = "6.1.0";
 const KEY = "opdVisitsV6";
 
 const Genders = ["Male", "Female"];
 const AgeLabels = {Under5:"<5", FiveToFourteen:"5-14", FifteenToSeventeen:"15-17", EighteenPlus:"≥18"};
 const AgeKeys = Object.keys(AgeLabels);
-const AgeCode = { Under5:1, FiveToFourteen:2, FifteenToSeventeen:3, EighteenPlus:4 };
 const WWOpts = ["WW", "NonWW"];
-const Dispositions = ["Discharged", "Admitted", "ReferredED", "ReferredOut"];
 const Diagnoses = [
   [1, "Respiratory Tract Infection", "Medical"],
   [2, "Acute Watery Diarrhea", "Medical"],
@@ -147,8 +145,8 @@ function buildVisit(uidOverride=null, tsOverride=null){
     timestamp: tsOverride || Date.now(),
     patientId: selPID,
     gender: Genders[selGender],
-    ageGroup: AgeKeys[selAge],
-    ageCode: AgeCode[AgeKeys[selAge]],
+    ageGroup: AgeKeys[selAge],               // key
+    ageLabel: AgeLabels[AgeKeys[selAge]],    // label for exports
     diagnosisNo: selDiag,
     diagnosisName: diag.name,
     clinicalCategory: diag.cat,
@@ -223,7 +221,7 @@ function duplicateLast(){
   tinyToast("Selections duplicated. Enter a new Patient ID.", true);
 }
 
-// Summary
+/* ---------- Summary ---------- */
 function renderSummary(){
   const all = loadAll();
   const today = new Date(); today.setHours(0,0,0,0);
@@ -246,7 +244,7 @@ function renderSummary(){
   document.getElementById("k-ww").textContent = `${ww}/${non}`;
   document.getElementById("age-breakdown").textContent = `<5 ${a0}, 5–14 ${a1}, 15–17 ${a2}, ≥18 ${a3}`;
 
-  // Age x Gender table
+  // Age × Gender table
   const ag = {Under5:{Male:0,Female:0}, FiveToFourteen:{Male:0,Female:0}, FifteenToSeventeen:{Male:0,Female:0}, EighteenPlus:{Male:0,Female:0}};
   list.forEach(v => { ag[v.ageGroup][v.gender]++; });
   const tbody = document.querySelector("#age-gender-table tbody");
@@ -264,7 +262,7 @@ function renderSummary(){
   top.forEach(([name,c]) => { const div=document.createElement("div"); div.textContent=`${name}: ${c}`; cont.appendChild(div); });
 }
 
-// Table & export
+/* ---------- Table & export ---------- */
 function renderTable(){
   const all = sortedAll();
   const tbody = document.querySelector("#data-table tbody");
@@ -275,7 +273,7 @@ function renderTable(){
     tr.innerHTML = `<td>${fmt(v.timestamp)}</td>
       <td>${v.patientId || ""}</td>
       <td>${v.gender}</td>
-      <td>${AgeLabels[v.ageGroup]}</td>
+      <td>${v.ageLabel}</td>
       <td>${v.diagnosisNo}</td>
       <td>${v.diagnosisName}</td>
       <td>${v.clinicalCategory[0]}</td>
@@ -296,9 +294,9 @@ function renderTable(){
 }
 
 function downloadCSV(list){
-  const header = ["timestamp","patient_id","gender","age_group_code","diagnosis_no","diagnosis_name","clinical_category","ww_flag","disposition"];
+  const header = ["timestamp","patient_id","gender","age_group","diagnosis_no","diagnosis_name","clinical_category","ww_flag","disposition"];
   const rows = [header].concat(list.map(v => [
-    v.timestamp, v.patientId || "", v.gender, v.ageCode, v.diagnosisNo, v.diagnosisName, v.clinicalCategory, v.wwFlag, v.disposition
+    v.timestamp, v.patientId || "", v.gender, v.ageLabel, v.diagnosisNo, v.diagnosisName, v.clinicalCategory, v.wwFlag, v.disposition
   ]));
   const csv = rows.map(r => r.map(x => (""+x).replace(/,/g,";")).join(",")).join("\n");
   const blob = new Blob([csv], {type:"text/csv"});
@@ -309,9 +307,9 @@ function downloadCSV(list){
 }
 
 function downloadXLS(list){
-  // Excel-compatible HTML table (.xls)
-  const header = ["timestamp","patient_id","gender","age_group_code","diagnosis_no","diagnosis_name","clinical_category","ww_flag","disposition"];
-  const rows = list.map(v => [v.timestamp, v.patientId || "", v.gender, v.ageCode, v.diagnosisNo, v.diagnosisName, v.clinicalCategory, v.wwFlag, v.disposition]);
+  // Excel-compatible HTML table (.xls) with age label
+  const header = ["timestamp","patient_id","gender","age_group","diagnosis_no","diagnosis_name","clinical_category","ww_flag","disposition"];
+  const rows = list.map(v => [v.timestamp, v.patientId || "", v.gender, v.ageLabel, v.diagnosisNo, v.diagnosisName, v.clinicalCategory, v.wwFlag, v.disposition]);
   let html = '<table><tr>' + header.map(h=>`<th>${h}</th>`).join('') + '</tr>';
   rows.forEach(r => { html += '<tr>' + r.map(x=>`<td>${String(x).replace(/[<&>]/g,s=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[s]))}</td>`).join('') + '</tr>'; });
   html += '</table>';
@@ -351,4 +349,4 @@ function tinyToast(msg, ok){
   err.style.color = ok ? "#107c41" : "#d93025";
   err.textContent = msg;
   setTimeout(()=>{ err.textContent=""; err.style.color="#d93025"; }, 1400);
-                                                                      }
+  }
