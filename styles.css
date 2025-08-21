@@ -59,3 +59,6 @@ th,td{ padding:6px; border-bottom:1px solid #eee; text-align:left; font-size:13p
 /* KPIs grid */
 .kpis{ display:grid; grid-template-columns: repeat(4, 1fr); gap:6px; }
 @media (max-width:480px){ .kpis{ grid-template-columns: repeat(2, 1fr);} }
+
+/* Force chips into a single row (scroll horizontally if needed) */
+.one-line{ flex-wrap:nowrap; overflow-x:auto; }
