@@ -1,11 +1,12 @@
-// OPD v6c – compact + export age labels
-const APP_VERSION = "6.1.0";
+// OPD v6.1.1 – two diagnoses, disposition last, one-line disposition
+const APP_VERSION = "6.1.1";
 const KEY = "opdVisitsV6";
 
 const Genders = ["Male", "Female"];
 const AgeLabels = {Under5:"<5", FiveToFourteen:"5-14", FifteenToSeventeen:"15-17", EighteenPlus:"≥18"};
 const AgeKeys = Object.keys(AgeLabels);
 const WWOpts = ["WW", "NonWW"];
+const Dispositions = ["Discharged","Admitted","Ref to ED","Ref Out"];
 const Diagnoses = [
   [1, "Respiratory Tract Infection", "Medical"],
   [2, "Acute Watery Diarrhea", "Medical"],
@@ -35,9 +36,13 @@ function loadAll(){ try { return JSON.parse(localStorage.getItem(KEY) || "[]"); 
 function saveAll(list){ localStorage.setItem(KEY, JSON.stringify(list)); }
 function sortedAll(){ return loadAll().slice().sort((a,b)=>b.timestamp-a.timestamp); }
 
-let selPID=""; let selGender=null; let selAge=null; let selDiag=null; let selWW=null; let selDisp=null;
+// Selections
+let selPID=""; let selGender=null; let selAge=null; 
+let selDiags=[];  // up to two numbers
+let selWW=null; let selDisp=null;
 let editUid=null; let browseIndex=-1;
 
+// DOM
 let pidDisplay, pidStatus, err; let scrNew, scrSum, scrData;
 
 window.initOPD = function initOPD(){
@@ -83,15 +88,28 @@ function showScreen(name){
 }
 
 function buildSelectors(){
+  // Gender, Age
   makeChips(document.getElementById("gender-chips"), Genders, i => { selGender=i; buildSelectors(); }, selGender);
   makeChips(document.getElementById("age-chips"), Object.values(AgeLabels), i => { selAge=i; buildSelectors(); }, selAge);
-  makeTiles(document.getElementById("diagnosis-grid"), Diagnoses, no => { selDiag=no; buildSelectors(); }, selDiag);
+
+  // Diagnoses (multi-select up to 2)
+  makeDiagTiles(document.getElementById("diagnosis-grid"), Diagnoses, selDiags);
+  const diagCount = document.getElementById("diag-count");
+  if (diagCount) diagCount.textContent = selDiags.length ? `${selDiags.length}/2 selected` : "";
+
+  // WW visible if any selected is Surgical
+  const anySurg = selDiags.some(no => DiagByNo[no]?.cat === "Surgical");
   const wwSec = document.getElementById("ww-section");
-  if (selDiag && DiagByNo[selDiag].cat === "Surgical") {
+  if (anySurg) {
     wwSec.style.display = "";
     makeChips(document.getElementById("ww-chips"), WWOpts, i => { selWW=i; buildSelectors(); }, selWW);
-  } else { wwSec.style.display = "none"; selWW=null; document.getElementById("ww-chips").innerHTML=""; }
-  makeChips(document.getElementById("disp-chips"), ["Discharged","Admitted","Ref to ED","Ref Out"], i => { selDisp=i; buildSelectors(); }, selDisp);
+  } else {
+    wwSec.style.display = "none"; selWW=null;
+    const ww = document.getElementById("ww-chips"); if (ww) ww.innerHTML="";
+  }
+
+  // Disposition (one line)
+  makeChips(document.getElementById("disp-chips"), Dispositions, i => { selDisp=i; buildSelectors(); }, selDisp);
 }
 
 function makeChips(container, options, onSelect, current){
@@ -104,15 +122,28 @@ function makeChips(container, options, onSelect, current){
     container.appendChild(div);
   });
 }
-function makeTiles(container, items, onSelect, selectedKey){
+
+function makeDiagTiles(container, items, selectedNos){
   container.innerHTML = "";
   items.forEach(([no, name, cat]) => {
     const div = document.createElement("div");
-    div.className = "tile" + (selectedKey===no ? " selected":"");
+    const isSel = selectedNos.includes(no);
+    div.className = "tile" + (isSel ? " selected":"");
     div.innerHTML = `<div>${no}. ${name}</div><div class="small">${cat}</div>`;
-    div.onclick = () => onSelect(no);
+    div.onclick = () => toggleDiag(no);
     container.appendChild(div);
   });
+}
+
+function toggleDiag(no){
+  const idx = selDiags.indexOf(no);
+  if (idx >= 0) {
+    selDiags.splice(idx,1);
+  } else {
+    if (selDiags.length < 2) selDiags.push(no);
+    else { selDiags.shift(); selDiags.push(no); } // replace oldest
+  }
+  buildSelectors();
 }
 
 function onKeypad(e){
@@ -130,28 +161,32 @@ function updatePID(){
 function validateSelection(requirePID=true){
   err.style.color = "#d93025"; err.textContent = "";
   if (requirePID && (!selPID || selPID.length === 0)) { err.textContent = "Enter Patient ID (max 3 digits)."; return false; }
-  if (selGender===null || selAge===null || selDiag===null || selDisp===null) { err.textContent="Select Gender, Age, Diagnosis, and Disposition."; return false; }
-  const diag = DiagByNo[selDiag]; const isSurg = diag.cat === "Surgical";
-  if (isSurg && selWW===null) { err.textContent="Select WW or Non-WW for surgical diagnosis."; return false; }
+  if (selGender===null || selAge===null || !selDiags.length || selDisp===null) { err.textContent="Select Gender, Age, ≥1 Diagnosis (max 2), and Disposition."; return false; }
+  const anySurg = selDiags.some(no => DiagByNo[no]?.cat === "Surgical");
+  if (anySurg && selWW===null) { err.textContent="Select WW or Non-WW for surgical diagnosis."; return false; }
   return true;
 }
 
 function newUid(){ return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2,7); }
 function buildVisit(uidOverride=null, tsOverride=null){
-  const diag = DiagByNo[selDiag];
-  const isSurg = diag.cat === "Surgical";
+  const diags = selDiags.slice(0,2);
+  const names = diags.map(no => DiagByNo[no]?.name || "");
+  const cats  = diags.map(no => DiagByNo[no]?.cat || "");
+  const anySurg = cats.includes("Surgical");
   return {
     uid: uidOverride || newUid(),
     timestamp: tsOverride || Date.now(),
     patientId: selPID,
     gender: Genders[selGender],
-    ageGroup: AgeKeys[selAge],               // key
-    ageLabel: AgeLabels[AgeKeys[selAge]],    // label for exports
-    diagnosisNo: selDiag,
-    diagnosisName: diag.name,
-    clinicalCategory: diag.cat,
-    wwFlag: isSurg ? (WWOpts[selWW] || "NA") : "NA",
-    disposition: ["Discharged","Admitted","ReferredED","ReferredOut"][selDisp]
+    ageGroup: AgeKeys[selAge],
+    ageLabel: AgeLabels[AgeKeys[selAge]],
+    diagnosisNos: diags,                // array for internal use
+    diagnosisNames: names,              // array for internal use
+    diagnosisNoStr: diags.join("+"),    // combined for table/export
+    diagnosisNameStr: names.join(" + "),
+    clinicalCategory: anySurg ? "Surgical" : "Medical",
+    wwFlag: anySurg ? (WWOpts[selWW] || "NA") : "NA",
+    disposition: Dispositions[selDisp]
   };
 }
 
@@ -180,9 +215,14 @@ function enterEdit(record){
   selPID = record.patientId || "";
   selGender = Genders.indexOf(record.gender);
   selAge = AgeKeys.indexOf(record.ageGroup);
-  selDiag = record.diagnosisNo;
-  selWW = (record.clinicalCategory==="Surgical") ? WWOpts.indexOf(record.wwFlag) : null;
-  selDisp = ["Discharged","Admitted","ReferredED","ReferredOut"].indexOf(record.disposition);
+  // Back-compat: if older record had single diagnosisNo, normalize
+  if (record.diagnosisNos && Array.isArray(record.diagnosisNos)) selDiags = record.diagnosisNos.slice(0,2);
+  else if (record.diagnosisNo) selDiags = [record.diagnosisNo];
+  else if (record.diagnosisNoStr) selDiags = record.diagnosisNoStr.split("+").map(n=>parseInt(n,10)).filter(Boolean).slice(0,2);
+  else selDiags = [];
+  const anySurg = selDiags.some(no => DiagByNo[no]?.cat === "Surgical");
+  selWW = anySurg ? (record.wwFlag==="WW" ? 0 : record.wwFlag==="NonWW" ? 1 : null) : null;
+  selDisp = Dispositions.indexOf(record.disposition);
   updatePID(); buildSelectors();
   document.getElementById("save-new").style.display = "none";
   document.getElementById("save-dup").style.display = "none";
@@ -192,7 +232,7 @@ function enterEdit(record){
 }
 function cancelEdit(){
   editUid = null;
-  selPID=""; selGender=null; selAge=null; selDiag=null; selWW=null; selDisp=null;
+  selPID=""; selGender=null; selAge=null; selDiags=[]; selWW=null; selDisp=null;
   updatePID(); buildSelectors();
   document.getElementById("save-new").style.display = "";
   document.getElementById("save-dup").style.display = "";
@@ -214,9 +254,12 @@ function duplicateLast(){
   const last = list[0];
   selGender = Genders.indexOf(last.gender);
   selAge = AgeKeys.indexOf(last.ageGroup);
-  selDiag = last.diagnosisNo;
-  selWW = (last.clinicalCategory==="Surgical") ? WWOpts.indexOf(last.wwFlag) : null;
-  selDisp = ["Discharged","Admitted","ReferredED","ReferredOut"].indexOf(last.disposition);
+  if (last.diagnosisNos) selDiags = last.diagnosisNos.slice(0,2);
+  else if (last.diagnosisNoStr) selDiags = last.diagnosisNoStr.split("+").map(n=>parseInt(n,10)).filter(Boolean).slice(0,2);
+  else if (typeof last.diagnosisNo === "number") selDiags = [last.diagnosisNo];
+  else selDiags = [];
+  selWW = (last.clinicalCategory==="Surgical") ? (last.wwFlag==="WW" ? 0 : last.wwFlag==="NonWW" ? 1 : null) : null;
+  selDisp = Dispositions.indexOf(last.disposition);
   buildSelectors();
   tinyToast("Selections duplicated. Enter a new Patient ID.", true);
 }
@@ -255,8 +298,13 @@ function renderSummary(){
     tbody.appendChild(tr);
   });
 
-  // Top diagnoses
-  const counts = {}; list.forEach(v => { counts[v.diagnosisName] = (counts[v.diagnosisName]||0) + 1; });
+  // Top diagnoses (count first diagnosis entry)
+  const counts = {};
+  list.forEach(v => {
+    const firstName = (v.diagnosisNames && v.diagnosisNames[0]) || v.diagnosisName || "";
+    if (!firstName) return;
+    counts[firstName] = (counts[firstName]||0) + 1;
+  });
   const top = Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const cont = document.getElementById("top-diags"); cont.innerHTML="";
   top.forEach(([name,c]) => { const div=document.createElement("div"); div.textContent=`${name}: ${c}`; cont.appendChild(div); });
@@ -270,15 +318,17 @@ function renderTable(){
   const fmt = (t)=> new Date(t).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
   all.forEach(v => {
     const tr = document.createElement("tr");
+    const nos = v.diagnosisNoStr || (Array.isArray(v.diagnosisNos)? v.diagnosisNos.join("+") : (v.diagnosisNo ?? ""));
+    const names = v.diagnosisNameStr || (Array.isArray(v.diagnosisNames)? v.diagnosisNames.join(" + ") : (v.diagnosisName ?? ""));
     tr.innerHTML = `<td>${fmt(v.timestamp)}</td>
       <td>${v.patientId || ""}</td>
       <td>${v.gender}</td>
-      <td>${v.ageLabel}</td>
-      <td>${v.diagnosisNo}</td>
-      <td>${v.diagnosisName}</td>
-      <td>${v.clinicalCategory[0]}</td>
-      <td>${v.wwFlag}</td>
-      <td>${v.disposition}</td>
+      <td>${v.ageLabel || ""}</td>
+      <td>${nos}</td>
+      <td>${names}</td>
+      <td>${(v.clinicalCategory||"")[0] || ""}</td>
+      <td>${v.wwFlag || "NA"}</td>
+      <td>${v.disposition || ""}</td>
       <td><button class="btn secondary" data-uid="${v.uid}" style="padding:6px 8px;">Edit</button></td>`;
     tbody.appendChild(tr);
   });
@@ -294,9 +344,12 @@ function renderTable(){
 }
 
 function downloadCSV(list){
-  const header = ["timestamp","patient_id","gender","age_group","diagnosis_no","diagnosis_name","clinical_category","ww_flag","disposition"];
+  const header = ["timestamp","patient_id","gender","age_group","diagnosis_nos","diagnosis_names","clinical_category","ww_flag","disposition"];
   const rows = [header].concat(list.map(v => [
-    v.timestamp, v.patientId || "", v.gender, v.ageLabel, v.diagnosisNo, v.diagnosisName, v.clinicalCategory, v.wwFlag, v.disposition
+    v.timestamp, v.patientId || "", v.gender, v.ageLabel || "", 
+    v.diagnosisNoStr || (Array.isArray(v.diagnosisNos)? v.diagnosisNos.join("+") : (v.diagnosisNo ?? "")),
+    v.diagnosisNameStr || (Array.isArray(v.diagnosisNames)? v.diagnosisNames.join(" + ") : (v.diagnosisName ?? "")),
+    v.clinicalCategory || "", v.wwFlag || "NA", v.disposition || ""
   ]));
   const csv = rows.map(r => r.map(x => (""+x).replace(/,/g,";")).join(",")).join("\n");
   const blob = new Blob([csv], {type:"text/csv"});
@@ -307,9 +360,13 @@ function downloadCSV(list){
 }
 
 function downloadXLS(list){
-  // Excel-compatible HTML table (.xls) with age label
-  const header = ["timestamp","patient_id","gender","age_group","diagnosis_no","diagnosis_name","clinical_category","ww_flag","disposition"];
-  const rows = list.map(v => [v.timestamp, v.patientId || "", v.gender, v.ageLabel, v.diagnosisNo, v.diagnosisName, v.clinicalCategory, v.wwFlag, v.disposition]);
+  const header = ["timestamp","patient_id","gender","age_group","diagnosis_nos","diagnosis_names","clinical_category","ww_flag","disposition"];
+  const rows = list.map(v => [
+    v.timestamp, v.patientId || "", v.gender, v.ageLabel || "",
+    v.diagnosisNoStr || (Array.isArray(v.diagnosisNos)? v.diagnosisNos.join("+") : (v.diagnosisNo ?? "")),
+    v.diagnosisNameStr || (Array.isArray(v.diagnosisNames)? v.diagnosisNames.join(" + ") : (v.diagnosisName ?? "")),
+    v.clinicalCategory || "", v.wwFlag || "NA", v.disposition || ""
+  ]);
   let html = '<table><tr>' + header.map(h=>`<th>${h}</th>`).join('') + '</tr>';
   rows.forEach(r => { html += '<tr>' + r.map(x=>`<td>${String(x).replace(/[<&>]/g,s=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[s]))}</td>`).join('') + '</tr>'; });
   html += '</table>';
@@ -349,4 +406,4 @@ function tinyToast(msg, ok){
   err.style.color = ok ? "#107c41" : "#d93025";
   err.textContent = msg;
   setTimeout(()=>{ err.textContent=""; err.style.color="#d93025"; }, 1400);
-}
+    }
