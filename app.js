@@ -349,4 +349,4 @@ function tinyToast(msg, ok){
   err.style.color = ok ? "#107c41" : "#d93025";
   err.textContent = msg;
   setTimeout(()=>{ err.textContent=""; err.style.color="#d93025"; }, 1400);
-  }
+}
