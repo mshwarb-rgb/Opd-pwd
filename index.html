@@ -11,7 +11,7 @@
 <body>
   <header>
     <div class="container">
-      <h1>OPD Tap Logger <span class="small mono" id="version">v6.1</span></h1>
+      <h1>OPD Tap Logger <span class="small mono" id="version">v6.1.1</span></h1>
       <nav>
         <button id="nav-new">New/Edit</button>
         <button id="nav-summary">Today’s Summary</button>
@@ -21,7 +21,7 @@
   </header>
 
   <main class="container">
-    <!-- ===================== New / Edit (super-compact) ===================== -->
+    <!-- ===================== New / Edit ===================== -->
     <section id="screen-new" class="screen">
       <div class="form-grid">
         <!-- Col: Patient ID + keypad -->
@@ -58,7 +58,7 @@
           <div class="section small" id="error" style="color:#d93025;margin-top:8px;"></div>
         </div>
 
-        <!-- Cols: Gender / Age / Disposition side-by-side -->
+        <!-- Cols: Gender / Age side-by-side -->
         <div class="section">
           <h2>Gender</h2>
           <div class="chips" id="gender-chips"></div>
@@ -69,23 +69,25 @@
           <div class="chips" id="age-chips"></div>
         </div>
 
-        <div class="section">
-          <h2>Disposition</h2>
-          <div class="chips" id="disp-chips"></div>
-        </div>
-
         <!-- Full-width: Diagnosis (dense grid) -->
         <div class="section" style="grid-column:1 / -1;">
           <div class="row" style="justify-content:space-between; align-items:center;">
-            <h2 style="margin:0;">Diagnosis</h2>
+            <h2 style="margin:0;">Diagnosis (choose up to 2)</h2>
+            <div class="small" id="diag-count"></div>
           </div>
           <div class="grid" id="diagnosis-grid"></div>
 
-          <!-- Contextual: WW/NonWW appears only for Surgical -->
+          <!-- Contextual: WW/NonWW appears only if any selected diag is Surgical -->
           <div class="section" id="ww-section" style="display:none; margin-top:6px;">
             <h2>War Wounded?</h2>
             <div class="chips" id="ww-chips"></div>
           </div>
+        </div>
+
+        <!-- Disposition LAST (full width), one row -->
+        <div class="section" style="grid-column:1 / -1;">
+          <h2>Disposition</h2>
+          <div class="chips one-line" id="disp-chips"></div>
         </div>
       </div>
 
@@ -144,8 +146,8 @@
               <th>Patient ID</th>
               <th>Gender</th>
               <th>Age</th>
-              <th>Dx No</th>
-              <th>Dx Name</th>
+              <th>Dx No(s)</th>
+              <th>Dx Name(s)</th>
               <th>Cat</th>
               <th>WW</th>
               <th>Disposition</th>
@@ -170,4 +172,4 @@
     });
   </script>
 </body>
-</html>
+          </html>
